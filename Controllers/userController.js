@@ -17,7 +17,7 @@ const handleErrors = (err) => {
     const field = fieldMatch ? fieldMatch[1] : null;
 
     if (field) {
-      errors[field] = `${field}.unique`;
+      errors[field] = `${field}Unique`;
     }
   }
 
@@ -40,22 +40,20 @@ const generateTokens = (user) => {
   return { accessToken, refreshToken };
 };
 
-
 const sendAuthResponse = async (res, user, accessToken, refreshToken) => {
-  res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      // secure: true, // Use this in production (HTTPS)
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    // secure: true, // Use this in production (HTTPS)
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 
   // 2. Remove sensitive fields for the JSON response
-  const userResponse = user.toObject({ getters: true }); 
-  delete userResponse.refresh_token; 
+  const userResponse = user.toObject({ getters: true });
+  delete userResponse.refresh_token;
   delete userResponse.password; // If not already done in the Mongoose hook
 
   return res.status(200).json({ user: userResponse, accessToken });
-}
-
+};
 
 const userSignUp = async (req, res) => {
   const { username, email, password } = req.body;
@@ -64,17 +62,6 @@ const userSignUp = async (req, res) => {
     const existingUser = await User.findOne({
       $or: [{ email: email }, { username: username }],
     });
-
-    if (existingUser) {
-      const errors = { username: "", password: "", email: "" };
-      if (existingUser.email === email) {
-        errors.email = "email.unique";
-      } else if (existingUser.username === username) {
-        errors.username = "username.unique";
-      }
-
-      return res.status(409).json({ errors }); // 409 Conflict
-    }
 
     const createdUser = await User.create({ email, username, password });
 
@@ -86,10 +73,7 @@ const userSignUp = async (req, res) => {
       { new: true } // returns the updated document
     );
 
-    
-
     return sendAuthResponse(res, updatedUser, accessToken, refreshToken);
-
   } catch (err) {
     console.log(err);
     const errors = handleErrors(err);
@@ -110,18 +94,13 @@ const userLogin = async (req, res) => {
       { new: true } // returns the updated document
     );
 
-        return sendAuthResponse(res, updatedUser, accessToken, refreshToken);
-
-
-
+    return sendAuthResponse(res, updatedUser, accessToken, refreshToken);
   } catch (err) {
-    if (err.message === "errors.invalidCredentials") {
-      return res
-        .status(401)
-        .json({ errors:err.message });
+    if (err.message === "invalidCredentials") {
+      return res.status(401).json(err.message);
     }
     const errors = handleErrors(err);
-    return res.status(401).json({ errors });
+    return res.status(401).json(errors);
   }
 };
 
