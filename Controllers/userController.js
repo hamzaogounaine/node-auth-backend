@@ -28,7 +28,7 @@ const generateTokens = (user) => {
   const accessToken = jwt.sign(
     { userId: user._id },
     process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: "15m" }
+    { expiresIn: "10s" }
   );
 
   const refreshToken = jwt.sign(
@@ -42,8 +42,12 @@ const generateTokens = (user) => {
 
 const sendAuthResponse = async (res, user, accessToken, refreshToken) => {
   res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    // secure: true, // Use this in production (HTTPS)
+   httpOnly: true, // Recommended for security (cannot be read by JS)
+    // IMPORTANT: When running on different localhost ports (HTTP),
+    // you must *not* set secure: true or SameSite: 'None'.
+    // Leaving SameSite unset or setting to 'Lax' is the best practice here.
+    // If 'Lax' doesn't work, try removing the sameSite property completely.
+    sameSite: 'Lax', 
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 
@@ -104,4 +108,33 @@ const userLogin = async (req, res) => {
   }
 };
 
-module.exports = { userSignUp, userLogin };
+const refreshToken = async (req, res) => {
+  const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
+  const refreshToken = req.cookies.refreshToken;
+  if (!refreshToken) {
+    return res.status(401).json({ error: "Refresh token not provided" });
+  }
+
+  jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, async (err, payload) => {
+    if (err) {
+      return res.status(403).json({ error: "Invalid or expired refresh token" });
+    }
+
+    const user = await User.findById(payload.userId);
+    if (!user || user.refresh_token !== refreshToken) {
+      return res.status(403).json({ error: "Invalid refresh token" });
+    }
+
+    // Generate new tokens
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
+    user.refresh_token = newRefreshToken;
+    await user.save();
+    return sendAuthResponse(res, user, accessToken, newRefreshToken);
+  });
+};
+
+module.exports = {
+  userSignUp,
+  userLogin,
+  refreshToken,
+};
