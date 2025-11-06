@@ -145,7 +145,7 @@ const userLogin = async (req, res) => {
     return sendAuthResponse(res, updatedUser, accessToken, refreshToken);
   } catch (err) {
     if (err.message === "invalidCredentials") {
-      return res.status(403).json(err.message);
+      return res.status(404).json(err.message);
     }
     const errors = handleErrors(err);
     return res.status(404).json(errors);
