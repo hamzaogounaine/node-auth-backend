@@ -28,7 +28,7 @@ const generateTokens = (user) => {
   const accessToken = jwt.sign(
     { userId: user._id },
     process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: "10s" }
+    { expiresIn: "16m" }
   );
 
   const refreshToken = jwt.sign(
@@ -59,6 +59,50 @@ const sendAuthResponse = async (res, user, accessToken, refreshToken) => {
   return res.status(200).json({ user: userResponse, accessToken });
 };
 
+// Add this function to your file:
+
+const getUser = async (req, res) => {
+  const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+  
+  // 1. Check for the Authorization header
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Access token missing or invalid format" });
+  }
+
+  // 2. Extract the token
+  const accessToken = authHeader.split(' ')[1];
+
+  try {
+    // 3. Verify the access token
+    const payload = jwt.verify(accessToken, ACCESS_TOKEN_SECRET);
+    const userId = payload.userId;
+
+    // 4. Find the user in the database
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // 5. Prepare user object (similar to sendAuthResponse)
+    const userResponse = user.toObject({ getters: true });
+    delete userResponse.refresh_token;
+    delete userResponse.password; // Ensure sensitive fields are removed
+
+    // 6. Return the sanitized user object
+    return res.status(200).json({ user: userResponse });
+
+  } catch (err) {
+    // This catches expired/invalid token errors
+    console.error('Access token verification failed:', err.message);
+    
+    // An expired access token should result in a 401 status, 
+    // which prompts the front-end (via your Axios interceptor) to try refreshing.
+    return res.status(401).json({ error: "Access token expired or invalid" });
+  }
+};
+
 const userSignUp = async (req, res) => {
   const { username, email, password } = req.body;
 
@@ -81,7 +125,7 @@ const userSignUp = async (req, res) => {
   } catch (err) {
     console.log(err);
     const errors = handleErrors(err);
-    return res.status(401).json(errors);
+    return res.status(403).json(errors);
   }
 };
 
@@ -101,24 +145,24 @@ const userLogin = async (req, res) => {
     return sendAuthResponse(res, updatedUser, accessToken, refreshToken);
   } catch (err) {
     if (err.message === "invalidCredentials") {
-      return res.status(401).json(err.message);
+      return res.status(403).json(err.message);
     }
     const errors = handleErrors(err);
-    return res.status(401).json(errors);
+    return res.status(403).json(errors);
   }
 };
 
 const refreshToken = async (req, res) => {
   const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
   const refreshToken = req.cookies.refreshToken;
+
   if (!refreshToken) {
-    return res.status(401).json({ error: "Refresh token not provided" });
+    return res.status(403).json({ error: "Refresh token not provided" });
   }
 
-  jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, async (err, payload) => {
-    if (err) {
-      return res.status(403).json({ error: "Invalid or expired refresh token" });
-    }
+  try {
+    // Use promisified version or try-catch with callback
+    const payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
 
     const user = await User.findById(payload.userId);
     if (!user || user.refresh_token !== refreshToken) {
@@ -127,14 +171,22 @@ const refreshToken = async (req, res) => {
 
     // Generate new tokens
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
+    
+    // Save new refresh token to database
     user.refresh_token = newRefreshToken;
     await user.save();
+    
+    // Send response with new tokens
     return sendAuthResponse(res, user, accessToken, newRefreshToken);
-  });
+  } catch (err) {
+    console.error('Refresh token error:', err);
+    return res.status(403).json({ error: "Invalid or expired refresh token" });
+  }
 };
 
 module.exports = {
   userSignUp,
   userLogin,
   refreshToken,
+  getUser
 };
