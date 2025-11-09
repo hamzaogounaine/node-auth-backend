@@ -175,11 +175,7 @@ const userResetPassword = async (req, res) => {
     // --- 4. Hash New Password and Update ---
     
     // Hash the new password before storing it
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-    // Update the password field in the database
-    user.password = hashedPassword;
+    user.password = newPassword;
     await user.save(); // Save the updated user document
 
     // --- 5. Success Response ---
