@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const User = require("../Models/User");
 
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
@@ -41,7 +42,6 @@ const sendAuthResponse = async (
   return res.status(200).json({ user: userResponse, accessToken, message });
 };
 
-
 const handleErrors = (err) => {
   const errors = { username: "", password: "", email: "" };
 
@@ -65,4 +65,49 @@ const handleErrors = (err) => {
   return errors;
 };
 
-module.exports = {generateTokens , sendAuthResponse , handleErrors}
+const checkUsernameAvailabily = async (req , res) => {
+  const username = req.query.username;
+  console.log(username)
+
+  const usernameAlreadyExits = await User.findOne({username})
+
+  if(usernameAlreadyExits) {
+    res.status(409).json('Username already exists')
+  }
+
+  res.status(200).json('Username not exists')
+}
+
+const refreshToken = async (req, res) => {
+  const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
+  const refreshToken = req.cookies.refreshToken;
+
+  if (!refreshToken) {
+    return res.status(403).json({ error: "Refresh token not provided" });
+  }
+
+  try {
+    // Use promisified version or try-catch with callback
+    const payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+
+    const user = await User.findById(payload.userId);
+    if (!user || user.refresh_token !== refreshToken) {
+      return res.status(403).json({ error: "Invalid refresh token" });
+    }
+
+    // Generate new tokens
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
+
+    // Save new refresh token to database
+    user.refresh_token = newRefreshToken;
+    await user.save();
+
+    // Send response with new tokens
+    return sendAuthResponse(res, user, accessToken, newRefreshToken);
+  } catch (err) {
+    console.error("Refresh token error:", err);
+    return res.status(403).json({ error: "Invalid or expired refresh token" });
+  }
+};
+
+module.exports = {generateTokens , sendAuthResponse , handleErrors , checkUsernameAvailabily , refreshToken}

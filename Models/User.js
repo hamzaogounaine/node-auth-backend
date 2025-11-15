@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const { isEmail } = require("validator");
 
 const userSchema = mongoose.Schema(
+  
   {
     googleId : {
       type : String
@@ -13,12 +14,28 @@ const userSchema = mongoose.Schema(
       unique: true,
       trim: true,
     },
+    first_name : {
+      type : String,
+      trim : true
+    },
+    last_name : {
+      type : String,
+      trim : true
+    },
     email: {
       type: String,
       required: [true, "emailRequired"],
       unique: true,
       lowercase : true,
       validate : [isEmail , 'emailInvalid']
+    },
+    phone_number : {
+      type : String,
+      default : null
+    },
+    is_phone_number_verified : {
+      type : Boolean,
+      default : false
     },
     password: {
       type: String,
@@ -36,7 +53,12 @@ const userSchema = mongoose.Schema(
     },
     refresh_token : {
       type : String,
-    }
+    },
+    last_login_ip: { 
+      type: String, 
+      required: false,
+      select: false // Do not expose this field by default
+  },
   },
   {
     timestamps: true,
@@ -58,20 +80,20 @@ userSchema.pre('save' , async function(next)  {
 
 
 userSchema.statics.login = async function (email, password) {
-  const user = await this.findOne({email}); 
+  const user = await this.findOne({ email }); 
 
-  if(user) {
-    const pwisvalid = await bcrypt.compare(password , user.password)
-
-    if(pwisvalid) {
-      user.password = undefined; 
-      return user
-    }
-
-    throw Error('invalidCredentials')
+  if (!user) {
+    throw Error('invalidCredentials');
   }
 
-  throw Error('invalidCredentials')
+  const pwisvalid = await bcrypt.compare(password, user.password);
+
+  if (pwisvalid) {
+    user.password = undefined; 
+    return user;
+  }
+
+  throw Error('invalidCredentials');
 }
 
 module.exports = mongoose.model('User', userSchema);
