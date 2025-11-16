@@ -1,5 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../Models/User");
+const crypto = require("crypto");
+const { sendVerificationLink } = require("./sendEmails");
 
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
@@ -66,17 +68,48 @@ const handleErrors = (err) => {
   return errors;
 };
 
-const checkUsernameAvailabily = async (req , res) => {
-  const username = req.query.username;
-  console.log(username)
+const generateEmailVeficationToken = (userId) => {
+  const jsonSecret = process.env.EMAIL_VERIFICATION_TOKEN_SECRET
 
-  const usernameAlreadyExits = await User.findOne({username})
-
-  if(usernameAlreadyExits) {
-    res.status(409).json('Username already exists')
+  const payload = {
+    userId,
+    type : "email_verification"
   }
 
-  res.status(200).json('Username not exists')
+  const token = jwt.sign(payload, jsonSecret  , {expiresIn : '15m'})
+
+  return token
+
+}
+
+const sendEmailVerificationLink = async (req , res) => {
+  const {userId}  = req.body
+
+  const user = await User.findById(userId)
+
+  if(!user) {
+    return res.status(404).json({message : 'noUserFound'})
+  }
+
+  if(user.is_email_verified ) {
+    return res.status(404).json({message : 'emailAlreadyVerified'})
+  }
+
+  const verificationToken = generateEmailVeficationToken(userId)
+  const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`
+
+  const emailBody = `<div> <p>This is your verification link</p> <a href=${verificationLink} >Click here </a>  </div>`
+  console.log(user.email)
+
+  const emailSent = await sendVerificationLink(to = user.email , subject = "Verify email" , body = emailBody)
+
+  if(!emailSent) {
+    return res.status(400).json({message : "Error while sending verification link"})
+  }
+
+  return res.status(200).json({message: "Email has been sent successfully"})
+
+  
 }
 
 const refreshToken = async (req, res) => {
@@ -111,4 +144,42 @@ const refreshToken = async (req, res) => {
   }
 };
 
-module.exports = {generateTokens , sendAuthResponse , handleErrors , checkUsernameAvailabily , refreshToken}
+const verifyDevice = async (req, res) => {
+  const {code , email} = req.body;
+  const clientIP = req.ip
+
+  if(!code ) {
+    return res.status(403).json({message : 'noCodeProvided'})
+  }
+  
+  const user = await User.findOne({email})
+
+  if(!user) {
+    return res.status(404).json({message : 'noUserFound'})
+  }
+
+  if(user.ip_verification_code !== code) {
+    return res.status(403).json({message : 'invalidCode'})
+  }
+
+  if(user.ip_verification_code_expiration < Date.now()) {
+    return res.status(403).json({message : 'codeExpired'})
+  }
+
+  const {accessToken , refreshToken} = generateTokens(user)
+
+
+  const updatdUser = await User.findByIdAndUpdate(user._id , {
+    ip_verification_code : null,
+    ip_verification_code_expiration : null,
+    refresh_token : refreshToken,
+    last_login_ip : clientIP
+  })
+
+  console.log(updatdUser)
+
+  return sendAuthResponse(res,  updatdUser , accessToken , refreshToken , message = 'deviceVerified'  )
+
+}
+
+module.exports = {generateTokens , sendAuthResponse , handleErrors , sendEmailVerificationLink , refreshToken , verifyDevice}

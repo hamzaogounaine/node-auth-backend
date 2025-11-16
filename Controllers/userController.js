@@ -6,6 +6,9 @@ const {
   handleErrors,
 } = require("../utils/authUtils");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
+const { sendVerificationLink } = require("../utils/sendEmails");
+const getVerificationEmailTemplate = require("../emails/deviceVerificationTemplates");
 
 const getUser = async (req, res) => {
   const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
@@ -101,14 +104,29 @@ const userSignUp = async (req, res) => {
 const userLogin = async (req, res) => {
   const { email, password } = req.body;
   const clientIP = req.ip;
+  const lang = req.cookies['NEXT_LOCALE'];
 
   try {
     const user = await User.login(email, password);
-    const { accessToken, refreshToken } = generateTokens(user);
+    
+    if (user.last_login_ip !== clientIP) {
+      const code = crypto.randomInt(100000, 999999);
+      const codeExpiration = Date.now() + 15 * 60 * 1000; // 15 minutes
 
-    // if(user.last_login_ip !== clientIP) {
-    //   const code =
-    // }
+      await User.findByIdAndUpdate(user._id, {
+        ip_verification_code : code,
+        ip_verification_code_expiration : codeExpiration
+      })
+      const {html , subject} = getVerificationEmailTemplate(lang , user.username, clientIP , code)
+      // await sendVerificationLink(user.email , subject , html)
+    
+      return res.status(200).json({
+        message: 'mustVerifyIp',
+        codeSent: true
+      });
+    }
+    
+    const { accessToken, refreshToken } = generateTokens(user);
 
     const updatedUser = await User.findByIdAndUpdate(
       user._id,
@@ -346,6 +364,39 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const verifyEmail = async (req, res) => {
+  const {token} = req.body
+  const jsonSecret = process.env.EMAIL_VERIFICATION_TOKEN_SECRET
+
+  if(!token) {
+    return res.status(404).json({message : "No token found"})
+  }
+  try {
+
+  const decoded = jwt.verify(token , jsonSecret )
+
+  if(decoded.type !== 'email_verification') {
+    return res.status(404).json('Invalid token')
+  }
+
+  const user = await User.findById(decoded.userId)
+
+  if(!user) {
+    return res.status(404).json('No user found')
+  }
+
+  if(user.is_email_verified) {
+    return res.status(200).json({message : "Email already verified"})
+  }
+
+  user.is_email_verified = true
+  await user.save()
+}
+  catch (err) {
+    return res.status(403).json(err)
+  }
+}
+
 
 module.exports = {
   userSignUp,
@@ -355,4 +406,5 @@ module.exports = {
   googleCallBack,
   userResetPassword,
   updateProfile,
+  verifyEmail
 };

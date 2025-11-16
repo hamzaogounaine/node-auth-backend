@@ -41,7 +41,7 @@ const userSchema = mongoose.Schema(
       type: String,
       // required: [true, "passwordRequired"],
       // minLength: [6, "passwordMinLength"],
-      selected : false
+      select: false
     },
     isGoogleUser :{
       type : Boolean,
@@ -58,34 +58,42 @@ const userSchema = mongoose.Schema(
       type: String, 
       required: false,
       select: false // Do not expose this field by default
-  },
+    },
+    ip_verification_code : {
+      type : String,
+      default : null
+    },
+    ip_verification_code_expiration : {
+      type : Date,
+      default : null
+    }
   },
   {
     timestamps: true,
   }
 );
 
-userSchema.pre('save' , async function(next)  {
-    if (!this.isModified('password')) return next();
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
 
-    try {
-        const salt = await bcrypt.genSalt()
-        this.password = await bcrypt.hash(this.password , salt)
-        next()
-    }
-    catch (err) {
-      throw err;
-    }
-})
+  console.log("this 0" , this)
+
+  try {
+    const salt = await bcrypt.genSalt();
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err); // ❗ FIX — do NOT throw inside middleware
+  }
+});
+
 
 
 userSchema.statics.login = async function (email, password) {
-  const user = await this.findOne({ email }); 
-
+  const user = await this.findOne({ email }).select('+password'); 
   if (!user) {
     throw Error('invalidCredentials');
   }
-
   const pwisvalid = await bcrypt.compare(password, user.password);
 
   if (pwisvalid) {
