@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../Models/User");
 const crypto = require("crypto");
 const { sendVerificationLink } = require("./sendEmails");
+const getAccountVerificationEmailTemplate = require("../emails/emailVerficationTemplates");
 
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
@@ -82,8 +83,10 @@ const generateEmailVeficationToken = (userId) => {
 
 }
 
-const sendEmailVerificationLink = async (req , res) => {
+const resendEmailVerificationLink = async (req , res) => {
   const {userId}  = req.body
+  const lang = req.cookies['NEXT_LOCALE'];
+  
 
   const user = await User.findById(userId)
 
@@ -98,10 +101,9 @@ const sendEmailVerificationLink = async (req , res) => {
   const verificationToken = generateEmailVeficationToken(userId)
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`
 
-  const emailBody = `<div> <p>This is your verification link</p> <a href=${verificationLink} >Click here </a>  </div>`
-  console.log(user.email)
+  const {html , subject} = getAccountVerificationEmailTemplate(lang , user.username , verificationLink)
 
-  const emailSent = await sendVerificationLink(to = user.email , subject = "Verify email" , body = emailBody)
+  const emailSent = await sendVerificationLink(user.email , subject , html)
 
   if(!emailSent) {
     return res.status(400).json({message : "Error while sending verification link"})
@@ -182,4 +184,6 @@ const verifyDevice = async (req, res) => {
 
 }
 
-module.exports = {generateTokens , sendAuthResponse , handleErrors , sendEmailVerificationLink , refreshToken , verifyDevice}
+
+
+module.exports = {generateTokens , sendAuthResponse , handleErrors , resendEmailVerificationLink , generateEmailVeficationToken , refreshToken , verifyDevice}

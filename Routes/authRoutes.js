@@ -2,7 +2,7 @@ const { Router } = require("express");
 const authMiddelware = require("../Middelwares/authMiddelware");
 const { userSignUp, userLogin, getUser, googleCallBack, userLogout, userResetPassword, updateProfile, verifyEmail } = require("../Controllers/userController");
 const passport = require("passport");
-const { checkUsernameAvailabily, refreshToken, sendEmailVerificationLink, verifyDevice } = require("../utils/authUtils");
+const { checkUsernameAvailabily, refreshToken, resendEmailVerificationLink, verifyDevice } = require("../utils/authUtils");
 const  rateLimit  = require("express-rate-limit");
 const zodValidator = require("../Middelwares/zodMiddlware");
 const { userSignUpSchema } = require("../validation/authSchema");
@@ -17,7 +17,7 @@ authRoutes.get('/' , authMiddelware , (req, res) => {res.send('Main get')})
 authRoutes.post('/api/signup' ,zodValidator(userSignUpSchema) ,userSignUp)
 authRoutes.post('/api/login' , userLogin)
 authRoutes.post('/api/update-profile' , authMiddelware , updateProfile)
-authRoutes.post('/api/resend-verification-link' , authMiddelware , sendEmailVerificationLink)
+authRoutes.post('/api/resend-verification-link' , authMiddelware , resendEmailVerificationLink)
 authRoutes.post('/api/verify-email'  , verifyEmail)
 authRoutes.post('/api/verify-device'  , verifyDevice)
 authRoutes.post('/api/refresh-token' , refreshToken)

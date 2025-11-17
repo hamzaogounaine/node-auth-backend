@@ -4,11 +4,13 @@ const {
   generateTokens,
   sendAuthResponse,
   handleErrors,
+  generateEmailVeficationToken,
 } = require("../utils/authUtils");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
-const { sendVerificationLink } = require("../utils/sendEmails");
+const { resendEmailVerificationLink, sendVerificationLink } = require("../utils/sendEmails");
 const getVerificationEmailTemplate = require("../emails/deviceVerificationTemplates");
+const getAccountVerificationEmailTemplate = require("../emails/emailVerficationTemplates");
 
 const getUser = async (req, res) => {
   const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
@@ -54,6 +56,8 @@ const getUser = async (req, res) => {
 const userSignUp = async (req, res) => {
   const { username, email, password, firstName, lastName, confirmPassword } =
     req.body;
+    const lang = req.cookies['NEXT_LOCALE'];
+
   const errors = {};
   try {
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
@@ -87,6 +91,19 @@ const userSignUp = async (req, res) => {
       { new: true } // returns the updated document
     );
 
+    const verificationToken = generateEmailVeficationToken(updatedUser._id)
+    const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`
+  
+    const {html , subject } = getAccountVerificationEmailTemplate(lang , updatedUser.username , verificationLink)
+  
+    const emailSent = await sendVerificationLink(to = updatedUser.email , subject  , body = html)
+    console.log(emailSent)
+  
+    if(!emailSent) {
+      return res.status(400).json({message : "Error while sending verification link"})
+    }
+
+
     return sendAuthResponse(
       res,
       updatedUser,
@@ -118,7 +135,7 @@ const userLogin = async (req, res) => {
         ip_verification_code_expiration : codeExpiration
       })
       const {html , subject} = getVerificationEmailTemplate(lang , user.username, clientIP , code)
-      // await sendVerificationLink(user.email , subject , html)
+      await sendVerificationLink(to = user.email , subject  , body = html)
     
       return res.status(200).json({
         message: 'mustVerifyIp',
@@ -133,6 +150,8 @@ const userLogin = async (req, res) => {
       { refresh_token: refreshToken, last_login_ip: clientIP },
       { new: true } // returns the updated document
     );
+
+   
     return sendAuthResponse(
       res,
       updatedUser,
@@ -247,11 +266,6 @@ const userResetPassword = async (req, res) => {
     res.clearCookie("refreshToken");
     await user.save(); // Save the updated user document
 
-    // --- 5. Success Response ---
-
-    // Note: You should generally invalidate any existing refresh tokens here
-    // to force a full re-login on all devices after a password change.
-    // (This step is omitted for brevity but recommended for security.)
 
     return res.status(200).json({ message: "Password updated successfully." });
   } catch (err) {

@@ -11,6 +11,7 @@ const transporter = nodemailer.createTransport({
 })
 
 const sendVerificationLink = async (to , subject , body) => {
+    console.log('sendign email')
 
     try {
         const info = await transporter.sendMail({

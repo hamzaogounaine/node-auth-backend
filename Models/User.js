@@ -76,7 +76,6 @@ const userSchema = mongoose.Schema(
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
 
-  console.log("this 0" , this)
 
   try {
     const salt = await bcrypt.genSalt();
