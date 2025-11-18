@@ -41,7 +41,7 @@ const getUser = async (req, res) => {
     // 5. Prepare user object (similar to sendAuthResponse)
     const userResponse = user.toObject({ getters: true });
     delete userResponse.refresh_token;
-    delete userResponse.password; // Ensure sensitive fields are removed
+    delete userResponse.last_login_ip; // Ensure sensitive fields are removed
 
     // 6. Return the sanitized user object
     return res.status(200).json({ user: userResponse });
@@ -126,16 +126,16 @@ const userLogin = async (req, res) => {
   try {
     const user = await User.login(email, password);
     
-    if (user.last_login_ip !== clientIP) {
+    if (clientIP !== user.last_login_ip) {
       const code = crypto.randomInt(100000, 999999);
       const codeExpiration = Date.now() + 15 * 60 * 1000; // 15 minutes
 
       await User.findByIdAndUpdate(user._id, {
         ip_verification_code : code,
-        ip_verification_code_expiration : codeExpiration
+        ip_verification_code_expiration : codeExpiration,
       })
       const {html , subject} = getVerificationEmailTemplate(lang , user.username, clientIP , code)
-      await sendVerificationLink(to = user.email , subject  , body = html)
+      // await sendVerificationLink(to = user.email , subject  , body = html)
     
       return res.status(200).json({
         message: 'mustVerifyIp',
@@ -329,7 +329,7 @@ const googleCallBack = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   // Use destructuring for clarity
-  const { userId, firstName, lastName, email, phoneNumber } = req.body;
+  const { userId, firstName, lastName, email, phoneNumber , password} = req.body;
 
   // 1. INPUT VALIDATION (Crucial step you missed)
   if (!userId) {
@@ -338,17 +338,18 @@ const updateProfile = async (req, res) => {
 
   try {
     // 2. CHECK: Await the first database call to see if the user exists
-    const user = await User.findById(userId); 
-    
+    const user = await User.findById(userId).select('+password'); 
     if (!user) {
       // The user object is null if Mongoose can't find it
       return res.status(404).json({ message: 'No user found with that ID.' });
     }
 
-    console.log(user)
+    const pwdIsValid = await bcrypt.compare(password , user.password)
+    
+    if(!pwdIsValid) {
+      return res.status(403).json({message : 'passwordIncorrect'})
+    }
 
-    // 3. UPDATE: Use findByIdAndUpdate with the 'new: true' option.
-    // We update the document and wait for the result.
     const updatedUser = await User.findByIdAndUpdate(
       userId, 
       {

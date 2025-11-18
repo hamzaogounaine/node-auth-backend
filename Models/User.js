@@ -57,7 +57,6 @@ const userSchema = mongoose.Schema(
     last_login_ip: { 
       type: String, 
       required: false,
-      select: false // Do not expose this field by default
     },
     ip_verification_code : {
       type : String,
@@ -96,7 +95,7 @@ userSchema.statics.login = async function (email, password) {
   const pwisvalid = await bcrypt.compare(password, user.password);
 
   if (pwisvalid) {
-    user.password = undefined; 
+    user.password = undefined;
     return user;
   }
 

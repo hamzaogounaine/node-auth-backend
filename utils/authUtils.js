@@ -24,8 +24,8 @@ const sendAuthResponse = async (
   res,
   user,
   accessToken,
-  refreshToken,
-  message
+  refreshToken=null,
+  message=null
 ) => {
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true, // Recommended for security (cannot be read by JS)
@@ -41,7 +41,7 @@ const sendAuthResponse = async (
   // 2. Remove sensitive fields for the JSON response
   const userResponse = user.toObject({ getters: true });
   delete userResponse.refresh_token;
-  delete userResponse.password; // If not already done in the Mongoose hook
+  delete userResponse.last_login_ip;
 
   return res.status(200).json({ user: userResponse, accessToken, message });
 };
