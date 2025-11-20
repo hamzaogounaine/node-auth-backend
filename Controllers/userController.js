@@ -94,17 +94,17 @@ const userSignUp = async (req, res) => {
       { new: true } // returns the updated document
     );
 
-    const verificationToken = generateEmailVeficationToken(updatedUser._id);
+    const verificationToken = generateEmailVeficationToken(createdUser._id);
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
     const { html, subject } = getAccountVerificationEmailTemplate(
       lang,
-      updatedUser.username,
+      createdUser.username,
       verificationLink
     );
 
     const emailSent = await sendVerificationLink(
-      (to = updatedUser.email),
+      (to = createdUser.email),
       subject,
       (body = html)
     );
@@ -138,7 +138,7 @@ const userLogin = async (req, res) => {
   try {
     const user = await User.login(email, password);
 
-    if (clientIP !== user.last_login_ip) {
+    if (user.last_login_ip &&   user.last_login_ip !== clientIP) {
       const code = crypto.randomInt(100000, 999999);
       const codeExpiration = Date.now() + 15 * 60 * 1000; // 15 minutes
 
