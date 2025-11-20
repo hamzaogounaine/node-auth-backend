@@ -2,7 +2,7 @@ const { Router } = require("express");
 const authMiddelware = require("../Middelwares/authMiddelware");
 const { userSignUp, userLogin, getUser, googleCallBack, userLogout, userResetPassword, updateProfile, verifyEmail } = require("../Controllers/userController");
 const passport = require("passport");
-const { checkUsernameAvailabily, refreshToken, resendEmailVerificationLink, verifyDevice, editAvatar, updateAvatarUrl } = require("../utils/authUtils");
+const { checkUsernameAvailabily, refreshToken, resendEmailVerificationLink, verifyDevice, editAvatar, updateAvatarUrl, sendPasswordResetLink, resetUserPassword } = require("../utils/authUtils");
 const  rateLimit  = require("express-rate-limit");
 const zodValidator = require("../Middelwares/zodMiddlware");
 const { userSignUpSchema } = require("../validation/authSchema");
@@ -24,6 +24,8 @@ authRoutes.post('/api/upload-avatar' , authMiddelware, upload.single('image') , 
 authRoutes.post('/api/update-avatart-url' , authMiddelware , updateAvatarUrl)
 authRoutes.post('/api/verify-email'  , verifyEmail)
 authRoutes.post('/api/verify-device'  , verifyDevice)
+authRoutes.post('/api/forgot-password' , sendPasswordResetLink)
+authRoutes.post('/api/forgot-password/reset' , resetUserPassword)
 authRoutes.post('/api/refresh-token' , refreshToken)
 authRoutes.get('/api/profile' , authMiddelware , getUser)
 authRoutes.post('/api/logout' , authMiddelware , userLogout)

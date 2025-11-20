@@ -69,6 +69,12 @@ const userSchema = mongoose.Schema(
     ip_verification_code_expiration : {
       type : Date,
       default : null
+    },
+    password_reset_token : {
+      type : String
+    },
+    password_reset_token_expiration : {
+      type : Date
     }
   },
   {

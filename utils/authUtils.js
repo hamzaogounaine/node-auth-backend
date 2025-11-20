@@ -5,6 +5,7 @@ const { sendVerificationLink } = require("./sendEmails");
 const getAccountVerificationEmailTemplate = require("../emails/emailVerficationTemplates");
 const sharp = require("sharp");
 const { uploadToS3, deleteFromS3 } = require("../lib/s3-upload");
+const { getPasswordResetEmailTemplate } = require("../emails/passwordResetTemplates");
 
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
@@ -194,40 +195,38 @@ const verifyDevice = async (req, res) => {
 
 const editAvatar = async (req, res) => {
   if (!req.file || !req.file.buffer) {
-    return res.status(400).json({ 
-      message: "No image file provided or file buffer is empty." 
+    return res.status(400).json({
+      message: "No image file provided or file buffer is empty.",
     });
   }
 
-  if (!req.file.mimetype.startsWith('image')) {
-    return res.status(400).json({ 
-        message: "Invalid file type. Only images are allowed." 
+  if (!req.file.mimetype.startsWith("image")) {
+    return res.status(400).json({
+      message: "Invalid file type. Only images are allowed.",
     });
   }
 
   try {
     // 💥 FIX: Correctly access the file buffer from multer (req.file.buffer)
-    const resizedBuffer = await sharp(req.file.buffer) 
+    const resizedBuffer = await sharp(req.file.buffer)
       .resize({ width: 500, height: 500, fit: "cover" })
-      .toFormat("jpeg", { mozjpeg: true, quality: 80 }) 
+      .toFormat("jpeg", { mozjpeg: true, quality: 80 })
       .toBuffer();
 
     const fileName = `avatars/${crypto.randomUUID()}.jpeg`;
-    
-    
+
     // Upload the resized buffer to S3
-    const imageUrl = await uploadToS3(resizedBuffer, fileName, 'image/jpeg');
+    const imageUrl = await uploadToS3(resizedBuffer, fileName, "image/jpeg");
 
     // SUCCESS: Return the S3 URL
     return res.status(200).json({ url: imageUrl });
-    
   } catch (err) {
     // 💥 FIX: Proper Error Handling. Do not just log and hang the request.
-    console.error('Avatar Processing/S3 Upload Error:', err);
-    
+    console.error("Avatar Processing/S3 Upload Error:", err);
+
     // Return a 500 error response to the client
-    return res.status(500).json({ 
-      message: "Image processing or upload failed on the server." 
+    return res.status(500).json({
+      message: "Image processing or upload failed on the server.",
     });
   }
 };
@@ -235,58 +234,136 @@ const editAvatar = async (req, res) => {
 const updateAvatarUrl = async (req, res) => {
   const { avatar, userId } = req.body;
 
-  if (!userId || typeof userId !== 'string') {
-  
-      return res.status(400).json({ message: "Invalid user ID provided." });
+  if (!userId || typeof userId !== "string") {
+    return res.status(400).json({ message: "Invalid user ID provided." });
   }
-  if (!avatar || typeof avatar !== 'string' || !avatar.startsWith('http')) {
-      return res.status(400).json({ message: "Provide a valid public image URL." });
+  if (!avatar || typeof avatar !== "string" || !avatar.startsWith("http")) {
+    return res
+      .status(400)
+      .json({ message: "Provide a valid public image URL." });
   }
 
   try {
-     
-      const userToUpdate = await User.findById(userId);
+    const userToUpdate = await User.findById(userId);
 
-      if (!userToUpdate) {
-        
-          return res.status(404).json({ message: "User not found." });
-      }
+    if (!userToUpdate) {
+      return res.status(404).json({ message: "User not found." });
+    }
 
-      
-      const oldAvatarUrl = userToUpdate.avatar_url;
+    const oldAvatarUrl = userToUpdate.avatar_url;
 
-      const updatedUser = await User.findByIdAndUpdate(
-          userId,
-          { avatar_url: avatar },
-          { new: true, runValidators: true } // runValidators ensures Mongoose validation runs
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { avatar_url: avatar },
+      { new: true, runValidators: true } // runValidators ensures Mongoose validation runs
+    );
+
+    if (!updatedUser) {
+      return res
+        .status(500)
+        .json({ message: "Failed to update database record." });
+    }
+
+    if (oldAvatarUrl && oldAvatarUrl !== avatar) {
+      deleteFromS3(oldAvatarUrl);
+      console.log(
+        `[CLEANUP] Old avatar scheduled for deletion: ${oldAvatarUrl}`
       );
+    }
 
-      if (!updatedUser) {
-          return res.status(500).json({ message: "Failed to update database record." });
-      }
-
-      if (oldAvatarUrl && oldAvatarUrl !== avatar) {
-        deleteFromS3(oldAvatarUrl)
-          console.log(`[CLEANUP] Old avatar scheduled for deletion: ${oldAvatarUrl}`);
-      }
-
-      // 6. Success Response
-      // Use the updated document if you need to return fresh user data
-      return res.status(200).json({ 
-          message: 'Avatar updated successfully',
-      });
-      
+    // 6. Success Response
+    // Use the updated document if you need to return fresh user data
+    return res.status(200).json({
+      message: "Avatar updated successfully",
+    });
   } catch (error) {
-      console.error("Error updating avatar URL:", error);
-      
-      if (error.name === 'CastError') {
-           return res.status(400).json({ message: "Invalid ID format." });
-      }
-      
-      return res.status(500).json({ message: "Internal server error during update." });
+    console.error("Error updating avatar URL:", error);
+
+    if (error.name === "CastError") {
+      return res.status(400).json({ message: "Invalid ID format." });
+    }
+
+    return res
+      .status(500)
+      .json({ message: "Internal server error during update." });
   }
 };
 
+const sendPasswordResetLink = async (req, res) => {
+  const { email } = req.body;
+  const lang = req.cookies["NEXT_LOCALE"];
+  const clientIP = req.ip
+
+
+  try {
+    if (!email) {
+      return res.status(400).json({ message: "Email not provided" });
+    }
+
+    const user = await User.findOne({ email: email });
+
+    if(!user) {
+      return res.status(201).json({ message: "Sent" }); 
+    }
+
+    const token = crypto.randomBytes(256).toString("hex");
+    const tokenExpiration = Date.now() + 15 * 60 * 1000;
+    const resetLink = `${process.env.FRONTEND_URL}/forgot-password/reset?token=${token}`;
+
+    const {html , subject} = getPasswordResetEmailTemplate(lang, user.username , clientIP , resetLink)
+
+    const emailSent = await sendVerificationLink(user.email, subject, html);
+    console.log(emailSent)
+
+    const updatedUser = await User.findByIdAndUpdate(user._id, {
+      password_reset_token: token,
+      password_reset_token_expiration: tokenExpiration,
+    });
+
+    if (!updatedUser || updatedUser) {
+      return res.status(201).json({ message: "Sent" });
+    }
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+const resetUserPassword = async (req , res) => {
+  const {password , token} = req.body
+
+  if(!password) {
+    return res.status(400).json({message : 'No password provided'})
+  }
+
+  if(!token) {
+    return res.status(400).json({message : 'No token provided'})
+  }
+
+  try {
+
+  const user = await User.findOne({
+    $and: [ 
+      { password_reset_token: token }, 
+      { password_reset_token_expiration: { $gt: Date.now() } } 
+    ]
+  })
+
+
+  if(!user) {
+    return res.status(401).json({message : 'Token not valid or maybe expired'})
+  }
+
+  user.password = password
+  user.password_reset_token = undefined
+  user.password_reset_token_expiration = undefined
+  await user.save()
+  
+  return res.status(201).json({message : 'Password updated'})
+}
+catch(err) {
+  console.log(err)
+}
+}
 
 module.exports = {
   generateTokens,
@@ -297,5 +374,7 @@ module.exports = {
   refreshToken,
   verifyDevice,
   editAvatar,
-  updateAvatarUrl
+  updateAvatarUrl,
+  sendPasswordResetLink,
+  resetUserPassword
 };
