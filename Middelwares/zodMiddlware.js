@@ -1,10 +1,4 @@
-// middleware/zodValidator.js
 
-/**
- * Creates a middleware function that validates the request body against a Zod schema.
- * @param {z.ZodObject} schema The Zod schema to validate against.
- * @returns {function} Express middleware function.
- */
 const zodValidator = (schema) => (req, res, next) => {
     const result = schema.safeParse(req.body);
 

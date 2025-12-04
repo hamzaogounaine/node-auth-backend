@@ -5,7 +5,6 @@ const authRoutes = require("./Routes/authRoutes");
 const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
 const passport = require("passport");
-const rateLimiter = require("./Middelwares/rateLimiter");
 
 const app = express();
 app.use(express.json());

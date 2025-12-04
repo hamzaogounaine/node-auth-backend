@@ -5,7 +5,9 @@ const { sendVerificationLink } = require("./sendEmails");
 const getAccountVerificationEmailTemplate = require("../emails/emailVerficationTemplates");
 const sharp = require("sharp");
 const { uploadToS3, deleteFromS3 } = require("../lib/s3-upload");
-const { getPasswordResetEmailTemplate } = require("../emails/passwordResetTemplates");
+const {
+  getPasswordResetEmailTemplate,
+} = require("../emails/passwordResetTemplates");
 
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
@@ -21,6 +23,25 @@ const generateTokens = (user) => {
   );
 
   return { accessToken, refreshToken };
+};
+
+const cleanUser = (user) => {
+  const safeUser = user.toObject();
+  delete safeUser.password;
+  delete safeUser.refresh_token;
+  delete safeUser.ip_verification_token;
+  delete safeUser.ip_verification_display_code;
+  delete safeUser.ip_verification_code;
+  delete safeUser.ip_verification_code_expiration;
+  delete safeUser.createdAt;
+  delete safeUser.updatedAt;
+  delete safeUser.is_email_verified;
+  delete safeUser.is_google_user;
+  delete safeUser.is_phone_number_verified;
+  delete safeUser.googleId;
+  delete safeUser._id;
+
+  return safeUser;
 };
 
 const sendAuthResponse = async (
@@ -42,11 +63,9 @@ const sendAuthResponse = async (
   });
 
   // 2. Remove sensitive fields for the JSON response
-  const userResponse = user.toObject({ getters: true });
-  delete userResponse.refresh_token;
-  delete userResponse.last_login_ip;
+ 
 
-  return res.status(200).json({ user: userResponse, accessToken, message });
+  return res.status(200).json({ user: user, accessToken, message });
 };
 
 const handleErrors = (err) => {
@@ -292,8 +311,7 @@ const updateAvatarUrl = async (req, res) => {
 const sendPasswordResetLink = async (req, res) => {
   const { email } = req.body;
   const lang = req.cookies["NEXT_LOCALE"];
-  const clientIP = req.ip
-
+  const clientIP = req.ip;
 
   try {
     if (!email) {
@@ -302,18 +320,23 @@ const sendPasswordResetLink = async (req, res) => {
 
     const user = await User.findOne({ email: email });
 
-    if(!user) {
-      return res.status(201).json({ message: "Sent" }); 
+    if (!user) {
+      return res.status(201).json({ message: "Sent" });
     }
 
     const token = crypto.randomBytes(256).toString("hex");
     const tokenExpiration = Date.now() + 15 * 60 * 1000;
     const resetLink = `${process.env.FRONTEND_URL}/forgot-password/reset?token=${token}`;
 
-    const {html , subject} = getPasswordResetEmailTemplate(lang, user.username , clientIP , resetLink)
+    const { html, subject } = getPasswordResetEmailTemplate(
+      lang,
+      user.username,
+      clientIP,
+      resetLink
+    );
 
     const emailSent = await sendVerificationLink(user.email, subject, html);
-    console.log(emailSent)
+    console.log(emailSent);
 
     const updatedUser = await User.findByIdAndUpdate(user._id, {
       password_reset_token: token,
@@ -328,42 +351,46 @@ const sendPasswordResetLink = async (req, res) => {
   }
 };
 
-const resetUserPassword = async (req , res) => {
-  const {password , token} = req.body
+const resetUserPassword = async (req, res) => {
+  const { password, token } = req.body;
 
-  if(!password) {
-    return res.status(400).json({message : 'No password provided'})
+  if (!password || !token) {
+    return res.status(400).json({ 
+      message: "codeExpired" 
+    });
   }
 
-  if(!token) {
-    return res.status(400).json({message : 'No token provided'})
+  // Validate password strength
+  if (password.length < 6) {
+    return res.status(400).json({ 
+      message: "passwordMinLength" 
+    });
   }
 
   try {
+    const user = await User.findOne({
+      $and: [
+        { password_reset_token: token },
+        { password_reset_token_expiration: { $gt: Date.now() } },
+      ],
+    });
 
-  const user = await User.findOne({
-    $and: [ 
-      { password_reset_token: token }, 
-      { password_reset_token_expiration: { $gt: Date.now() } } 
-    ]
-  })
+    if (!user) {
+      return res
+        .status(401)
+        .json({ message: "codeExpired" });
+    }
 
+    user.password = password;
+    user.password_reset_token = undefined;
+    user.password_reset_token_expiration = undefined;
+    await user.save();
 
-  if(!user) {
-    return res.status(401).json({message : 'Token not valid or maybe expired'})
+    return res.status(201).json({ message: "Password updated" });
+  } catch (err) {
+    console.log(err);
   }
-
-  user.password = password
-  user.password_reset_token = undefined
-  user.password_reset_token_expiration = undefined
-  await user.save()
-  
-  return res.status(201).json({message : 'Password updated'})
-}
-catch(err) {
-  console.log(err)
-}
-}
+};
 
 module.exports = {
   generateTokens,
@@ -376,5 +403,6 @@ module.exports = {
   editAvatar,
   updateAvatarUrl,
   sendPasswordResetLink,
-  resetUserPassword
+  resetUserPassword,
+  cleanUser
 };

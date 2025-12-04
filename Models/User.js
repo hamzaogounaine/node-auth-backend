@@ -62,14 +62,15 @@ const userSchema = mongoose.Schema(
       type: String, 
       required: false,
     },
-    ip_verification_code : {
+    ip_verification_token : {
       type : String,
       default : null
     },
-    ip_verification_code_expiration : {
+    ip_verification_token_expiration : {
       type : Date,
       default : null
     },
+    ip_verification_display_code : Number,
     password_reset_token : {
       type : String
     },

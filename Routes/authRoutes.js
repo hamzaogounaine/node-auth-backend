@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const authMiddelware = require("../Middelwares/authMiddelware");
-const { userSignUp, userLogin, getUser, googleCallBack, userLogout, userResetPassword, updateProfile, verifyEmail, updateGoogleUsersProfile } = require("../Controllers/userController");
+const { userSignUp, userLogin, getUser, googleCallBack, userLogout, userResetPassword, updateProfile, verifyIpCode, updateGoogleUsersProfile } = require("../Controllers/userController");
 const passport = require("passport");
 const { checkUsernameAvailabily, refreshToken, resendEmailVerificationLink, verifyDevice, editAvatar, updateAvatarUrl, sendPasswordResetLink, resetUserPassword } = require("../utils/authUtils");
 const  rateLimit  = require("express-rate-limit");
@@ -23,8 +23,8 @@ authRoutes.post('/api/update-google-profile' , authMiddelware , updateGoogleUser
 authRoutes.post('/api/resend-verification-link' , authMiddelware , resendEmailVerificationLink)
 authRoutes.post('/api/upload-avatar' , authMiddelware, upload.single('image') , editAvatar)
 authRoutes.post('/api/update-avatart-url' , authMiddelware , updateAvatarUrl)
-authRoutes.post('/api/verify-email'  , verifyEmail)
-authRoutes.post('/api/verify-device'  , verifyDevice)
+authRoutes.post('/api/verify-email'  , verifyDevice)
+authRoutes.post('/api/verify-device'  , verifyIpCode)
 authRoutes.post('/api/forgot-password' , sendPasswordResetLink)
 authRoutes.post('/api/forgot-password/reset' , resetUserPassword)
 authRoutes.post('/api/refresh-token' , refreshToken)
